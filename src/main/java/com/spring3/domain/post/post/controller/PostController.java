@@ -8,9 +8,10 @@ import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
-import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
@@ -23,30 +24,6 @@ public class PostController {
 
     public PostController(PostService postService) {
         this.postService = postService;
-    }
-
-    public String getWriteFormHtml(String errorMessage, String title, String content, String errorFieldName) {
-
-        return """
-                <div style="color:red">%s</div>
-                
-                <form method="POST" action="/posts/doWrite">
-                  <input type="text" name="title" value="%s" autoFocus>
-                  <br>
-                  <textarea name="content">%s</textarea>
-                  <br>
-                  <input type="submit" value="작성">
-                </form>
-                
-                <script>
-                    const errorFieldName = "%s";
-                    
-                    if(errorFieldName.length > 0) {
-                        const form = document.querySelector("form");
-                        form[errorFieldName].focus();
-                    }
-                </script>
-                """.formatted(errorMessage, title, content, errorFieldName);
     }
 
     @AllArgsConstructor
@@ -65,19 +42,17 @@ public class PostController {
     @GetMapping("/posts/write")
     @ResponseBody
     public String write() {
-        return getWriteFormHtml("", "", "", "");
+        return "post/write";
     }
 
     @PostMapping("/posts/doWrite")
     @ResponseBody
     public String doWrite(
-            @Valid PostWriteForm form, BindingResult bindingResult
+            @ModelAttribute("form") @Valid PostWriteForm form, BindingResult bindingResult,
+            Model model
     ) {
 
         if(bindingResult.hasErrors()) {
-
-            String fieldName = "title";
-
             // 명령형
 //            List<FieldError> fieldErrorsList = bindingResult.getFieldErrors();
 //
@@ -94,11 +69,17 @@ public class PostController {
             // 스트림
             String errorMessages = bindingResult.getFieldErrors()
                     .stream()
-                    .map(FieldError::getDefaultMessage)
+                    .map(field -> field.getField()+ "-" + field.getDefaultMessage())
+                    .map(message -> message.split("-"))
+                    .map(bits -> """
+                            <!-- %s --><li data-error-field-name="%s">%s</li>
+                            """.formatted(bits[1], bits[0], bits[2]))
                     .sorted()
                     .collect(Collectors.joining("<br>"));
 
-            return getWriteFormHtml(errorMessages, form.title, form.content, fieldName);
+            model.addAttribute("errorMessages", errorMessages);
+
+            return "post/write";
         }
 
 
@@ -111,7 +92,9 @@ public class PostController {
 
         Post post = postService.write(form.title, form.content);
 
-        return "%d번 글이 작성되었습니다.".formatted(post.getId());
+        model.addAttribute("id", post.getId());
+
+        return "post/writeDone";
     }
 
 }
